@@ -11,12 +11,16 @@ Barcode scanner for pregnancy/breastfeeding product safety. Scan a product → r
                                     |
                                     v
                         verdict_engine.get_verdict()
-                        1. rules.json match (deterministic, ~40 entries)
-                        2. Gemini Flash via OpenRouter for unmatched ingredients
+                        1. Gemini Flash via OpenRouter = native reasoner
+                           (one batched call: per-ingredient risk + stage-aware summary)
+                        2. rules.json guardrails (~25 known-bad entries) can only
+                           make a verdict STRICTER, never looser
                                     |
                                     v
                               JSON verdict -> app
 ```
+
+Gemini Flash does the reasoning for every scan; the rules layer exists so known teratogens (retinoids, alcohol, etc.) never depend on model output. If the LLM call fails, the engine falls back to rules-only and marks the rest UNKNOWN.
 
 ## The one contract everyone codes against (agree now, never change)
 
@@ -47,9 +51,11 @@ Response:
 
 | Person | File | Deliverable in 15 min |
 |--------|------|----------------------|
-| A | `personA.md` | Expo app: scan barcode → call `/scan` → color-coded verdict screen |
+| A | `personA.md` | Expo app: scan barcode → call `/scan` → designed verdict screen (design spec + tokens included in the file) |
 | B | `personB.md` | FastAPI: barcode → Open Food/Beauty Facts → engine → JSON response |
-| C | `personC.md` | `rules.json` (~40 entries) + `get_verdict()` with OpenRouter Gemini Flash fallback |
+| C | `personC.md` | Gemini Flash reasoner via OpenRouter + `rules.json` guardrails inside `get_verdict()` |
+
+Design direction (Person A owns it): **calm clinical-warm** — warm paper background, one huge serif verdict word, full-screen verdict color wash. Tokens live in `personA.md`.
 
 ## Timeline (45 min total)
 
