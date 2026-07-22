@@ -1,0 +1,178 @@
+[
+  {
+    "match": ["retinol", "retinyl", "retinal", "tretinoin", "isotretinoin"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Vitamin A derivative; teratogenic risk",
+    "source": "FDA Category X class"
+  },
+  {
+    "match": ["hydroquinone"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Skin-lightening agent; systemic absorption concern in pregnancy",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["formaldehyde", "formalin"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Known carcinogen and developmental toxin",
+    "source": "FDA / EPA"
+  },
+  {
+    "match": ["phthalate", "dibutyl phthalate", "dbp"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Endocrine disruptor linked to reproductive harm",
+    "source": "CDC / EPA"
+  },
+  {
+    "match": ["methotrexate"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Known teratogen; abortifacient at therapeutic doses",
+    "source": "FDA Category X"
+  },
+  {
+    "match": ["salicylic acid", "salicylate"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Topical salicylates may be absorbed; high-dose oral forms avoided in pregnancy",
+    "source": "ACOG / clinical guidance"
+  },
+  {
+    "match": ["oxybenzone"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Chemical sunscreen filter with endocrine-activity concern",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["alcohol", "ethanol", "ethyl alcohol"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Ethanol is a teratogen; no known safe dose in pregnancy",
+    "source": "CDC / ACOG"
+  },
+  {
+    "match": ["unpasteurized"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Risk of listeria and other foodborne pathogens",
+    "source": "FDA / CDC"
+  },
+  {
+    "match": ["swordfish", "king mackerel", "tilefish", "shark"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "High-mercury fish; fetal neurotoxicity risk",
+    "source": "FDA / EPA fish advisory"
+  },
+  {
+    "match": ["caffeine"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Limit intake; high doses linked to miscarriage risk and infant stimulation when nursing",
+    "source": "ACOG / LactMed"
+  },
+  {
+    "match": ["licorice root", "glycyrrhiza", "glycyrrhizin"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Associated with preterm birth and developmental concerns at high intake",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["ginseng"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Herbal stimulant with limited pregnancy safety data",
+    "source": "no human data / clinical caution"
+  },
+  {
+    "match": ["black cohosh"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Uterotonic herbal; not recommended in pregnancy",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["dong quai"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Herbal with uterine-stimulant effects; avoid in pregnancy",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["ibuprofen"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "stage_overrides": { "trimester_3": "AVOID" },
+    "reason": "NSAID; avoid especially in third trimester due to fetal ductus arteriosus risk",
+    "source": "FDA / ACOG"
+  },
+  {
+    "match": ["aspirin", "acetylsalicylic acid"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Salicylate; high-dose use discouraged outside supervised low-dose regimens",
+    "source": "ACOG / FDA"
+  },
+  {
+    "match": ["pseudoephedrine"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Decongestant; first-trimester and vascular concerns reported",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["warfarin"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Known teratogen; fetal warfarin syndrome",
+    "source": "FDA Category X"
+  },
+  {
+    "match": ["isotretinoin", "accutane"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Severe teratogen; contraindicated in pregnancy",
+    "source": "FDA Category X / iPLEDGE"
+  },
+  {
+    "match": ["minoxidil"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Systemic absorption possible; limited pregnancy data",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["benzoyl peroxide"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Limited systemic absorption but data sparse; prefer lower concentrations",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["paraben", "methylparaben", "propylparaben"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Possible endocrine activity; prefer avoidance when alternatives exist",
+    "source": "clinical caution"
+  },
+  {
+    "match": ["triclosan"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Antimicrobial with endocrine-disruption concern",
+    "source": "FDA / EPA"
+  },
+  {
+    "match": ["clary sage", "rosemary oil"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Essential oils with uterine-stimulant reports; avoid concentrated use",
+    "source": "clinical caution"
+  }
+]
