@@ -1,5 +1,12 @@
 # Person A — Mobile App: Scan Flow + Frontend Design (Expo)
 
+> **STATUS: BUILT AS A BROWSER APP AND TESTED LIVE** — see `web/index.html` (frontend) + `api/main.py` (backend). Run `uvicorn main:app --host 0.0.0.0 --port 8000` from `api/`, then open `http://localhost:8000` (or your LAN IP from a phone; camera needs HTTPS or localhost).
+>
+> - **Single-page web app**, no build step: camera barcode scanning via html5-qrcode (EAN-13/UPC-A/EAN-8/UPC-E), the full design spec below implemented as CSS tokens — warm paper bg, Fraunces/Inter, stage pills, full-screen verdict wash, flagged-ingredient cards, pulsing loader, disclaimer footer.
+> - **Search any product**: the search box hits `GET /search?q=` — Barcode Lookup API when `BARCODELOOKUP_API_KEY` is set, otherwise Open Food Facts then Open Beauty Facts. Typing 8–14 digits into the box checks it directly as a barcode. Tap a result → verdict.
+> - **Backend** `POST /scan`: resolves via Barcode Lookup → Open Food Facts → Open Beauty Facts, then runs Person C's `get_verdict()`. If a product has no ingredient list, the product NAME is analyzed as a last resort — it can prove danger ("Retinol Serum" → AVOID) but never safety (SAFE downgrades to UNKNOWN, confidence capped at 0.4).
+> - Verified live: Nutella scan → SAFE with listeria-aware reasoning; "retinol serum" search → AVOID from name analysis; camera-less fallback message points to search.
+
 **Goal (15 min core + 5 min polish):** app in Expo Go that scans a barcode, POSTs to `/scan`, renders a designed verdict screen — not a debug screen.
 
 Read `PROJECTCONTEXT.md` first for the request/response contract.
