@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from verdict_engine import get_verdict
+from verdict_engine import coverage_report, get_verdict
 
 app = FastAPI(title="Expecta API")
 app.add_middleware(
@@ -41,6 +41,27 @@ TIMEOUT = 10.0
 class ScanRequest(BaseModel):
     barcode: str
     stage: str = "trimester_1"
+
+
+@app.get("/health")
+def health() -> dict:
+    """Integration check for the team: which pieces are live."""
+    return {
+        "status": "ok",
+        "reasoner_model": os.getenv("OPENROUTER_MODEL", "google/gemini-3.6-flash"),
+        "reasoner_key_present": bool(os.getenv("OPENROUTER_API_KEY")),
+        "barcodelookup_enabled": bool(BARCODE_KEY),
+        "product_sources": (
+            (["Barcode Lookup"] if BARCODE_KEY else [])
+            + ["Open Food Facts", "Open Beauty Facts"]
+        ),
+    }
+
+
+@app.get("/coverage")
+def coverage(limit: int = 20) -> dict:
+    """Most-scanned ingredients we couldn't classify — the database roadmap."""
+    return {"gaps": coverage_report(limit)}
 
 
 def _split_ingredients(text: str) -> list[str]:

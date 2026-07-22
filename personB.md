@@ -1,5 +1,13 @@
 # Person B — Backend API (FastAPI)
 
+> **STATUS: BUILT AND TESTED E2E** — see `api/main.py`. Run `uvicorn main:app --host 0.0.0.0 --port 8000` from `api/`; it serves both the API and the browser app (`web/`) on one port.
+>
+> - **`POST /scan`** — resolution chain: Barcode Lookup API (when `BARCODELOOKUP_API_KEY` set) → Open Food Facts → Open Beauty Facts → Person C's `get_verdict()`. Product found without ingredients → name-only analysis (can prove danger, never safety). Not found → honest UNKNOWN.
+> - **`GET /search?q=`** — search any product by name (Barcode Lookup → OFF → OBF); digits are treated as a barcode by the frontend.
+> - **`GET /health`** — shows which reasoner model, keys, and product sources are live; use this at integration time instead of guessing.
+> - **`GET /coverage`** — most-scanned unclassified ingredients from the engine's gap log; this is the database roadmap.
+> - Verified live: spec's Nutella smoke test (8s first scan → CAUTION, 0.7s cached repeat), unknown barcode → UNKNOWN, stage sensitivity (same product re-reasoned for breastfeeding), invalid stage value defaults instead of erroring, search returns 8+ results for "prenatal vitamins".
+
 **Goal (15 min):** `POST /scan` running on your LAN: barcode → Open Food Facts / Open Beauty Facts → ingredient list → Person C's `get_verdict()` → contract JSON.
 
 Read `PROJECTCONTEXT.md` first for the request/response contract.
