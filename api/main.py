@@ -15,6 +15,7 @@ import os
 import re
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -37,12 +38,34 @@ BARCODE_KEY = os.getenv("BARCODELOOKUP_API_KEY", "").strip()
 BL_URL = "https://api.barcodelookup.com/v3/products"
 OFF_URL = "https://world.openfoodfacts.org"
 OBF_URL = "https://world.openbeautyfacts.org"
+OPF_URL = "https://world.openproductsfacts.org"
+FDA_URL = "https://api.fda.gov/drug/label.json"
 TIMEOUT = 10.0
 
 
 class ScanRequest(BaseModel):
     barcode: str
     stage: str = "trimester_1"
+
+
+class NameRequest(BaseModel):
+    name: str
+    stage: str = "trimester_1"
+    actives: list[str] = []
+
+
+def _barcode_variants(code: str) -> list[str]:
+    """UPC-A vs EAN-13 leading-zero mismatches are the top cause of misses."""
+    digits = re.sub(r"\D", "", code)
+    variants = [digits]
+    if len(digits) == 12:                     # UPC-A -> EAN-13
+        variants.append("0" + digits)
+    if len(digits) == 13 and digits.startswith("0"):   # EAN-13 -> UPC-A
+        variants.append(digits[1:])
+    if len(digits) == 11:                     # UPC missing check-digit pad
+        variants.append("0" + digits)
+    seen: set[str] = set()
+    return [v for v in variants if v and not (v in seen or seen.add(v))]
 
 
 @app.get("/health")
@@ -242,19 +265,22 @@ def _from_openfacts(barcode: str, base: str, label: str) -> dict | None:
 
 
 def _resolve_product(barcode: str) -> dict | None:
-    """First source that yields ingredients wins; else best name-only hit."""
+    """Try every barcode variant against every source; ingredients win,
+    otherwise keep the best name-only hit."""
     name_only: dict | None = None
-    for fetch in (
-        lambda: _from_barcodelookup(barcode),
-        lambda: _from_openfacts(barcode, OFF_URL, "Open Food Facts"),
-        lambda: _from_openfacts(barcode, OBF_URL, "Open Beauty Facts"),
-    ):
-        hit = fetch()
-        if hit is None:
-            continue
-        if hit["ingredients"]:
-            return hit
-        name_only = name_only or hit
+    for code in _barcode_variants(barcode):
+        for fetch in (
+            lambda c=code: _from_barcodelookup(c),
+            lambda c=code: _from_openfacts(c, OFF_URL, "Open Food Facts"),
+            lambda c=code: _from_openfacts(c, OBF_URL, "Open Beauty Facts"),
+            lambda c=code: _from_openfacts(c, OPF_URL, "Open Products Facts"),
+        ):
+            hit = fetch()
+            if hit is None:
+                continue
+            if hit["ingredients"]:
+                return hit
+            name_only = name_only or hit
     return name_only
 
 
@@ -299,67 +325,144 @@ def scan(req: ScanRequest) -> dict:
     return {"product_name": product["name"], "image": product.get("image"), **result}
 
 
+def _search_barcodelookup(q: str) -> list[dict]:
+    if not BARCODE_KEY:
+        return []
+    out: list[dict] = []
+    try:
+        r = httpx.get(
+            BL_URL,
+            params={"search": q, "formatted": "y", "key": BARCODE_KEY},
+            timeout=TIMEOUT,
+        )
+        if r.status_code == 200:
+            for p in (r.json().get("products") or [])[:8]:
+                code = p.get("barcode_number")
+                if code:
+                    out.append(
+                        {
+                            "name": p.get("title") or "Unknown product",
+                            "barcode": code,
+                            "brand": p.get("brand") or "",
+                            "image": (p.get("images") or [None])[0],
+                            "kind": "product",
+                        }
+                    )
+    except Exception:
+        pass
+    return out
+
+
+def _search_openfacts(q: str, base: str) -> list[dict]:
+    out: list[dict] = []
+    try:
+        r = httpx.get(
+            f"{base}/cgi/search.pl",
+            params={
+                "search_terms": q,
+                "search_simple": 1,
+                "action": "process",
+                "json": 1,
+                "page_size": 6,
+            },
+            timeout=15.0,
+        )
+        for p in (r.json().get("products") or [])[:6]:
+            code = p.get("code")
+            name = p.get("product_name")
+            if code and name:
+                out.append(
+                    {
+                        "name": name,
+                        "barcode": code,
+                        "brand": p.get("brands") or "",
+                        "image": p.get("image_front_small_url"),
+                        "kind": "product",
+                    }
+                )
+    except Exception:
+        pass
+    return out
+
+
+def _search_openfda(q: str) -> list[dict]:
+    """Medicines by brand/generic name — no barcode, but exact actives."""
+    out: list[dict] = []
+    try:
+        r = httpx.get(
+            FDA_URL,
+            params={
+                "search": f'(openfda.brand_name:"{q}" OR openfda.generic_name:"{q}")',
+                "limit": 5,
+            },
+            timeout=6.0,
+        )
+        if r.status_code != 200:
+            return []
+        seen: set[str] = set()
+        for doc in r.json().get("results") or []:
+            of = doc.get("openfda") or {}
+            name = (of.get("brand_name") or of.get("generic_name") or [None])[0]
+            if not name or name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            actives = [s.title() for s in (of.get("substance_name") or [])][:6]
+            out.append(
+                {
+                    "name": name.title(),
+                    "barcode": None,
+                    "brand": (of.get("manufacturer_name") or ["FDA-listed drug"])[0],
+                    "image": None,
+                    "kind": "drug",
+                    "actives": actives,
+                }
+            )
+    except Exception:
+        pass
+    return out
+
+
 @app.get("/search")
 def search(q: str) -> dict:
-    """Search any product by name; returns candidates to scan by barcode."""
+    """Search products AND medicines in parallel across all sources."""
     q = q.strip()
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = [
+            pool.submit(_search_barcodelookup, q),
+            pool.submit(_search_openfda, q),
+            pool.submit(_search_openfacts, q, OFF_URL),
+            pool.submit(_search_openfacts, q, OBF_URL),
+            pool.submit(_search_openfacts, q, OPF_URL),
+        ]
+        buckets = [f.result() for f in futures]
+
     results: list[dict] = []
+    seen: set[str] = set()
+    for bucket in buckets:
+        for item in bucket:
+            key = item["barcode"] or "name:" + item["name"].lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(item)
+    return {"results": results[:12]}
 
-    if BARCODE_KEY:
-        try:
-            r = httpx.get(
-                BL_URL,
-                params={"search": q, "formatted": "y", "key": BARCODE_KEY},
-                timeout=TIMEOUT,
-            )
-            if r.status_code == 200:
-                for p in (r.json().get("products") or [])[:10]:
-                    code = p.get("barcode_number")
-                    if code:
-                        results.append(
-                            {
-                                "name": p.get("title") or "Unknown product",
-                                "barcode": code,
-                                "brand": p.get("brand") or "",
-                                "image": (p.get("images") or [None])[0],
-                            }
-                        )
-        except Exception:
-            pass
 
-    if not results:
-        # Food first, then beauty/skincare — both use the same search API.
-        for base in (OFF_URL, OBF_URL):
-            try:
-                r = httpx.get(
-                    f"{base}/cgi/search.pl",
-                    params={
-                        "search_terms": q,
-                        "search_simple": 1,
-                        "action": "process",
-                        "json": 1,
-                        "page_size": 8,
-                    },
-                    timeout=15.0,
-                )
-                for p in (r.json().get("products") or [])[:8]:
-                    code = p.get("code")
-                    name = p.get("product_name")
-                    if code and name:
-                        results.append(
-                            {
-                                "name": name,
-                                "barcode": code,
-                                "brand": p.get("brands") or "",
-                                "image": p.get("image_front_small_url"),
-                            }
-                        )
-            except Exception:
-                pass
-            if len(results) >= 8:
-                break
-
-    return {"results": results[:10]}
+@app.post("/scan-name")
+def scan_name(req: NameRequest) -> dict:
+    """Verdict for a product with no barcode (e.g. an openFDA drug result)."""
+    name = req.name.strip()
+    if req.actives:
+        result = get_verdict(req.actives, req.stage)
+    else:
+        result = get_verdict([name], req.stage)
+        if result["verdict"] == "SAFE":  # a name alone can't prove safety
+            result["verdict"] = "UNKNOWN"
+            result["flagged_ingredients"] = []
+        result["confidence"] = min(result.get("confidence", 0.0), 0.4)
+    _enrich_with_openfda(result)
+    _log_scan("name:" + name.lower(), name, req.stage, result["verdict"])
+    return {"product_name": name, "image": None, **result}
 
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"

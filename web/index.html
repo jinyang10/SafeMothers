@@ -342,13 +342,19 @@ async function startScanner() {
   const note = document.getElementById("camnote");
   try {
     if (!scanner) {
-      scanner = new Html5Qrcode("reader", { formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_E ]});
+      scanner = new Html5Qrcode("reader", {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_E ],
+        // Native BarcodeDetector (Chrome/Android) is far more reliable
+        // on 1D barcodes than the JS fallback decoder.
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      });
     }
     if (scanning) return;
     await scanner.start({ facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 130 } }, onScan, () => {});
+      { fps: 12, qrbox: (w, h) => ({ width: Math.floor(w * 0.8), height: Math.floor(h * 0.45) }) },
+      onScan, () => {});
     scanning = true;
     note.textContent = "Or search above if scanning is awkward.";
   } catch (err) {
@@ -376,6 +382,24 @@ async function checkBarcode(barcode) {
   } catch (err) {
     renderVerdict({ product_name: "Couldn't check this product", verdict: "UNKNOWN",
       flagged_ingredients: [],
+      reasoning: "The check timed out or the server is unreachable. Please try again." });
+  } finally { clearTimeout(timer); }
+}
+
+async function checkName(name, actives) {
+  await stopScanner();
+  setWash(null);
+  show("view-loading");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 45000);
+  try {
+    const res = await fetch(API + "/scan-name", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, actives, stage: stage || "trimester_1" }), signal: ctrl.signal,
+    });
+    renderVerdict(await res.json());
+  } catch (err) {
+    renderVerdict({ product_name: name, verdict: "UNKNOWN", flagged_ingredients: [],
       reasoning: "The check timed out or the server is unreachable. Please try again." });
   } finally { clearTimeout(timer); }
 }
@@ -434,13 +458,17 @@ async function doSearch() {
     for (const p of data.results) {
       const card = document.createElement("button");
       card.className = "result-card";
+      const icon = p.kind === "drug" ? "💊" : "🧴";
       card.innerHTML =
-        (p.image ? `<img src="${p.image}" alt="" onerror="this.outerHTML='<div class=noimg>🧴</div>'" />`
-                 : `<div class="noimg">🧴</div>`) +
+        (p.image ? `<img src="${p.image}" alt="" onerror="this.outerHTML='<div class=noimg>${icon}</div>'" />`
+                 : `<div class="noimg">${icon}</div>`) +
         `<div><div class="rname"></div><div class="rbrand"></div></div>`;
       card.querySelector(".rname").textContent = p.name;
-      card.querySelector(".rbrand").textContent = p.brand;
-      card.addEventListener("click", () => checkBarcode(p.barcode));
+      card.querySelector(".rbrand").textContent =
+        p.kind === "drug" && p.actives && p.actives.length
+          ? "Active: " + p.actives.join(", ") : (p.brand || "");
+      card.addEventListener("click", () =>
+        p.barcode ? checkBarcode(p.barcode) : checkName(p.name, p.actives || []));
       box.appendChild(card);
     }
   } catch (err) {
@@ -465,7 +493,9 @@ async function loadRecent() {
       chip.className = "rchip";
       chip.innerHTML = `<span class="dot v-${(it.verdict || "UNKNOWN").toUpperCase()}"></span><span></span>`;
       chip.querySelector("span:last-child").textContent = it.product;
-      chip.addEventListener("click", () => checkBarcode(it.barcode));
+      chip.addEventListener("click", () =>
+        it.barcode && it.barcode.startsWith("name:")
+          ? checkName(it.product, []) : checkBarcode(it.barcode));
       strip.appendChild(chip);
     }
   } catch (_) {}
