@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>expecta — is it safe?</title>
+<title>expecta — know what's safe, instantly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root {
@@ -14,8 +14,9 @@
     --ink: #1F2933;
     --ink-soft: #6E7A87;
     --card: #FFFFFF;
+    --line: #E8E1D6;
     --radius: 16px;
-    --spacing: 16px;
+    --sp: 16px;
     --safe: #2E7D5B;      --safe-wash: #E7F2EC;
     --caution: #B45309;   --caution-wash: #FBF0E1;
     --avoid: #B3382E;     --avoid-wash: #F9E9E7;
@@ -23,185 +24,317 @@
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; }
-  body {
-    font-family: "Inter", system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-    transition: background-color 0.4s ease;
-  }
-  body.wash-SAFE    { background: var(--safe-wash); }
-  body.wash-CAUTION { background: var(--caution-wash); }
-  body.wash-AVOID   { background: var(--avoid-wash); }
-  body.wash-UNKNOWN { background: var(--unknown-wash); }
+  body { font-family: "Inter", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
 
-  .shell { max-width: 480px; margin: 0 auto; min-height: 100dvh;
-           display: flex; flex-direction: column; padding: var(--spacing); }
+  /* ================= phone emulation (desktop) ================= */
+  .stage-bg { min-height: 100dvh; display: flex; flex-direction: column;
+              align-items: center; justify-content: center; }
+  .desktop-caption { display: none; }
+  .phone { width: 100%; min-height: 100dvh; background: var(--bg); position: relative;
+           display: flex; flex-direction: column; transition: background-color 0.4s ease; }
+  @media (min-width: 760px) {
+    body { background:
+      radial-gradient(1100px 600px at 20% 0%, #F1E9DC 0%, transparent 60%),
+      radial-gradient(900px 700px at 90% 100%, #E9F0EA 0%, transparent 55%),
+      #F6F1E9; }
+    .desktop-caption { display: block; text-align: center; margin-bottom: 22px; }
+    .desktop-caption .dc-logo { font-family: "Fraunces", serif; font-weight: 600; font-size: 26px; }
+    .desktop-caption p { color: var(--ink-soft); font-size: 14px; margin-top: 4px; }
+    .stage-bg { padding: 40px 0; }
+    .phone {
+      width: 400px; min-height: 0; height: 820px; border-radius: 52px;
+      border: 11px solid #15181C; overflow: hidden;
+      box-shadow: 0 40px 90px -20px rgba(31,41,51,0.45), 0 0 0 2px rgba(255,255,255,0.4) inset;
+    }
+    .phone::before { content: ""; position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      width: 110px; height: 26px; background: #15181C; border-radius: 14px; z-index: 50; }
+  }
+  .phone.wash-SAFE    { background: var(--safe-wash); }
+  .phone.wash-CAUTION { background: var(--caution-wash); }
+  .phone.wash-AVOID   { background: var(--avoid-wash); }
+  .phone.wash-UNKNOWN { background: var(--unknown-wash); }
+
+  .shell { flex: 1; display: flex; flex-direction: column; overflow-y: auto;
+           padding: calc(var(--sp) + 30px) var(--sp) var(--sp); scrollbar-width: none; }
+  .shell::-webkit-scrollbar { display: none; }
+
   .view { display: none; flex: 1; flex-direction: column; }
-  .view.active { display: flex; animation: fadein 0.25s ease; }
-  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .view.active { display: flex; animation: fadein 0.28s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-  /* ---- header ---- */
-  header { display: flex; flex-direction: column; gap: 12px; padding-bottom: var(--spacing); }
-  .wordmark { font-family: "Fraunces", serif; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
-  .wordmark small { font-family: "Inter"; font-size: 12px; font-weight: 400; color: var(--ink-soft); margin-left: 8px; }
-  .stages { display: flex; gap: 8px; }
-  .pill {
-    flex: 1; padding: 8px 0; text-align: center; font-size: 13px; font-weight: 500;
-    border: 1.5px solid var(--ink); border-radius: 999px; background: transparent;
-    color: var(--ink); cursor: pointer; font-family: inherit; transition: all 0.15s ease;
-  }
+  /* ================= landing ================= */
+  .l-top { display: flex; justify-content: space-between; align-items: center; padding-bottom: 26px; }
+  .wordmark { font-family: "Fraunces", serif; font-size: 21px; font-weight: 600; }
+  .l-badge { font-size: 11px; font-weight: 600; color: var(--safe); background: var(--safe-wash);
+             padding: 5px 11px; border-radius: 999px; }
+  .l-hero h1 { font-family: "Fraunces", serif; font-size: 38px; font-weight: 600;
+               line-height: 1.12; letter-spacing: -0.02em; }
+  .l-hero h1 em { font-style: normal; color: var(--safe); }
+  .l-hero .sub { padding-top: 14px; font-size: 15.5px; line-height: 1.55; color: var(--ink-soft); }
+  .l-feats { padding: 26px 0 8px; display: flex; flex-direction: column; gap: 13px; }
+  .feat { display: flex; gap: 12px; align-items: flex-start; }
+  .feat .tick { flex: none; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--safe-wash); color: var(--safe); font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .feat b { font-size: 14px; font-weight: 600; display: block; }
+  .feat span { font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
+  .l-cta { margin-top: auto; padding-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+  .trust { font-size: 11.5px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+
+  /* ================= guided stage step ================= */
+  .stepper { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+             color: var(--ink-soft); padding-bottom: 10px; }
+  .g-title { font-family: "Fraunces", serif; font-size: 28px; font-weight: 600; line-height: 1.15; }
+  .g-sub { padding: 10px 0 20px; font-size: 14px; color: var(--ink-soft); line-height: 1.5; }
+  .stage-cards { display: flex; flex-direction: column; gap: 12px; }
+  .stage-card { display: flex; align-items: center; gap: 14px; text-align: left;
+    background: var(--card); border: 1.5px solid var(--line); border-radius: var(--radius);
+    padding: 16px; cursor: pointer; font-family: inherit; transition: all 0.15s ease; }
+  .stage-card:hover { border-color: var(--ink); }
+  .stage-card:active { transform: scale(0.98); }
+  .stage-card .ic { flex: none; width: 42px; height: 42px; border-radius: 12px;
+    background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .stage-card b { font-size: 15px; font-weight: 600; display: block; }
+  .stage-card span { font-size: 12.5px; color: var(--ink-soft); }
+  .backlink { margin-top: auto; padding-top: 18px; background: none; border: none;
+    color: var(--ink-soft); font: 500 13px "Inter"; cursor: pointer; }
+
+  /* ================= scan ================= */
+  .s-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; }
+  .pills { display: flex; gap: 6px; }
+  .pill { padding: 7px 12px; font-size: 12px; font-weight: 600; border: 1.5px solid var(--ink);
+    border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer;
+    font-family: inherit; transition: all 0.15s ease; }
   .pill.active { background: var(--ink); color: #fff; }
-  .pill:active { transform: scale(0.96); }
-
-  /* ---- search ---- */
-  .searchrow { display: flex; gap: 8px; padding-bottom: var(--spacing); }
-  .searchrow input {
-    flex: 1; padding: 12px 16px; font: 15px "Inter"; color: var(--ink);
-    border: 1.5px solid #D8D2C8; border-radius: var(--radius); background: var(--card); outline: none;
-  }
+  .searchrow { display: flex; gap: 8px; padding-bottom: 14px; }
+  .searchrow input { flex: 1; padding: 13px 16px; font: 14.5px "Inter"; color: var(--ink);
+    border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--card); outline: none; }
   .searchrow input:focus { border-color: var(--ink); }
-  .searchrow button {
-    padding: 12px 20px; font: 600 14px "Inter"; border: none; cursor: pointer;
-    border-radius: var(--radius); background: var(--ink); color: #fff;
-  }
-
-  /* ---- scanner ---- */
+  .searchrow button { padding: 0 20px; font: 600 14px "Inter"; border: none; cursor: pointer;
+    border-radius: var(--radius); background: var(--ink); color: #fff; }
   .camwrap { position: relative; border-radius: var(--radius); overflow: hidden;
-             background: #14181D; aspect-ratio: 3/4; }
+             background: #14181D; aspect-ratio: 4/3.4; flex: none; }
   #reader { width: 100%; height: 100%; }
   #reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
-  .reticle {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; pointer-events: none; gap: 14px;
-  }
-  .reticle .box { width: 70%; height: 34%; border: 2.5px solid rgba(255,255,255,0.9);
-                  border-radius: var(--radius); box-shadow: 0 0 0 2000px rgba(0,0,0,0.25); }
-  .reticle p { color: #fff; font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
-  .camnote { padding-top: 10px; font-size: 13px; color: var(--ink-soft); text-align: center; }
-
-  /* ---- search results ---- */
-  .results { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
-  .result-card {
-    display: flex; gap: 12px; align-items: center; background: var(--card);
-    border-radius: var(--radius); padding: 12px; cursor: pointer; border: none;
-    text-align: left; font-family: inherit; box-shadow: 0 1px 3px rgba(31,41,51,0.08);
-    transition: transform 0.1s ease;
-  }
+  .reticle { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; pointer-events: none; gap: 12px; }
+  .reticle .box { width: 68%; height: 40%; border: 2.5px solid rgba(255,255,255,0.92);
+    border-radius: var(--radius); box-shadow: 0 0 0 2000px rgba(0,0,0,0.22); }
+  .reticle p { color: #fff; font-size: 13px; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+  .camnote { padding-top: 9px; font-size: 12.5px; color: var(--ink-soft); text-align: center; }
+  .recent { padding-top: 16px; }
+  .recent h4 { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+               color: var(--ink-soft); padding-bottom: 8px; }
+  .recent-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+  .recent-strip::-webkit-scrollbar { display: none; }
+  .rchip { flex: none; display: flex; align-items: center; gap: 7px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; cursor: pointer;
+    font: 500 12.5px "Inter"; color: var(--ink); }
+  .rchip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.v-SAFE { background: var(--safe); } .dot.v-CAUTION { background: var(--caution); }
+  .dot.v-AVOID { background: var(--avoid); } .dot.v-UNKNOWN { background: var(--unknown); }
+  .results { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
+  .result-card { display: flex; gap: 12px; align-items: center; background: var(--card);
+    border-radius: var(--radius); padding: 12px; cursor: pointer; border: 1px solid var(--line);
+    text-align: left; font-family: inherit; transition: transform 0.1s ease; }
   .result-card:active { transform: scale(0.98); }
-  .result-card img { width: 48px; height: 48px; object-fit: contain; border-radius: 8px; background: #F3EFE8; }
-  .result-card .noimg { width: 48px; height: 48px; border-radius: 8px; background: #F3EFE8;
-    display: flex; align-items: center; justify-content: center; font-size: 20px; }
-  .result-card .rname { font-size: 15px; font-weight: 600; color: var(--ink); }
-  .result-card .rbrand { font-size: 13px; color: var(--ink-soft); }
+  .result-card img, .result-card .noimg { width: 46px; height: 46px; object-fit: contain;
+    border-radius: 10px; background: #F3EFE8; flex: none; }
+  .result-card .noimg { display: flex; align-items: center; justify-content: center; font-size: 19px; }
+  .result-card .rname { font-size: 14.5px; font-weight: 600; }
+  .result-card .rbrand { font-size: 12.5px; color: var(--ink-soft); }
 
-  /* ---- loading ---- */
-  #view-loading { align-items: center; justify-content: center; }
-  .pulse { font-size: 17px; color: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+  /* ================= loading ================= */
+  #view-loading { align-items: center; justify-content: center; gap: 18px; }
+  .scan-anim { width: 74px; height: 74px; border-radius: 22px; background: var(--card);
+    border: 1px solid var(--line); position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .scan-anim::after { content: ""; position: absolute; left: 8%; right: 8%; height: 2.5px;
+    background: var(--safe); border-radius: 2px; animation: sweep 1.4s ease-in-out infinite; }
+  @keyframes sweep { 0%,100% { top: 18%; } 50% { top: 78%; } }
+  .pulse { font-size: 16px; color: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
+  .loading-sub { font-size: 12.5px; color: var(--ink-soft); }
+  @keyframes pulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
 
-  /* ---- verdict ---- */
-  #view-verdict { gap: 12px; }
-  .verdict-word { font-family: "Fraunces", serif; font-size: 64px; font-weight: 600;
+  /* ================= verdict ================= */
+  #view-verdict { gap: 10px; }
+  .verdict-word { font-family: "Fraunces", serif; font-size: 58px; font-weight: 600;
                   line-height: 1.05; letter-spacing: -0.02em; }
-  .verdict-word.v-SAFE { color: var(--safe); }
-  .verdict-word.v-CAUTION { color: var(--caution); }
-  .verdict-word.v-AVOID { color: var(--avoid); }
-  .verdict-word.v-UNKNOWN { color: var(--unknown); }
-  .pname { font-family: "Fraunces", serif; font-size: 20px; color: var(--ink); }
-  .stageline { font-size: 13px; color: var(--ink-soft); }
-  .reasoning { font-size: 16px; line-height: 1.5; color: var(--ink); padding-top: 4px; }
+  .verdict-word.v-SAFE { color: var(--safe); } .verdict-word.v-CAUTION { color: var(--caution); }
+  .verdict-word.v-AVOID { color: var(--avoid); } .verdict-word.v-UNKNOWN { color: var(--unknown); }
+  .pname { font-family: "Fraunces", serif; font-size: 19px; }
+  .stageline { font-size: 12.5px; color: var(--ink-soft); }
+  .reasoning { font-size: 15px; line-height: 1.55; padding-top: 4px; }
+  .confline { font-size: 12px; color: var(--ink-soft); }
   .flags { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; flex: 1; }
   .flag-card { background: var(--card); border-radius: var(--radius); padding: 14px;
-               box-shadow: 0 1px 3px rgba(31,41,51,0.08); }
+               border: 1px solid rgba(31,41,51,0.06); }
   .flag-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .flag-name { font-weight: 600; font-size: 15px; }
-  .chip { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+  .flag-name { font-weight: 600; font-size: 14.5px; }
+  .chip { font-size: 10.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
   .chip.v-SAFE { color: var(--safe); background: var(--safe-wash); }
   .chip.v-CAUTION { color: var(--caution); background: var(--caution-wash); }
   .chip.v-AVOID { color: var(--avoid); background: var(--avoid-wash); }
   .chip.v-UNKNOWN { color: var(--unknown); background: var(--unknown-wash); }
   .flag-reason { font-size: 13px; color: var(--ink-soft); padding-top: 6px; line-height: 1.45; }
-  .confline { font-size: 12px; color: var(--ink-soft); }
+  .fda-quote { margin-top: 9px; padding: 9px 11px; background: var(--bg); border-left: 3px solid var(--ink);
+    border-radius: 0 8px 8px 0; font-size: 12px; line-height: 1.5; color: var(--ink); }
+  .fda-quote b { font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase;
+                 color: var(--ink-soft); display: block; padding-bottom: 3px; }
+  .srcline { font-size: 11.5px; color: var(--ink-soft); padding-top: 4px; }
 
-  footer { padding-top: var(--spacing); display: flex; flex-direction: column; gap: 10px; }
-  .disclaimer { font-size: 12px; color: var(--ink-soft); text-align: center; }
-  .bigbtn { width: 100%; padding: 16px; font: 600 16px "Inter"; border: none; cursor: pointer;
-            border-radius: var(--radius); background: var(--ink); color: #fff; }
+  footer { padding-top: var(--sp); display: flex; flex-direction: column; gap: 10px; }
+  .disclaimer { font-size: 11.5px; color: var(--ink-soft); text-align: center; }
+  .bigbtn { width: 100%; padding: 16px; font: 600 15.5px "Inter"; border: none; cursor: pointer;
+            border-radius: var(--radius); background: var(--ink); color: #fff; transition: transform 0.1s; }
   .bigbtn:active { transform: scale(0.98); }
+  .bigbtn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
 </style>
 </head>
 <body>
-<div class="shell">
-  <header>
-    <div class="wordmark">expecta <small>is it safe?</small></div>
-    <div class="stages" id="stages">
-      <button class="pill active" data-stage="trimester_1">T1</button>
-      <button class="pill" data-stage="trimester_2">T2</button>
-      <button class="pill" data-stage="trimester_3">T3</button>
-      <button class="pill" data-stage="breastfeeding">Nursing</button>
-    </div>
-  </header>
+<div class="stage-bg">
+  <div class="desktop-caption">
+    <div class="dc-logo">expecta</div>
+    <p>Pregnancy &amp; nursing product safety — live demo</p>
+  </div>
 
-  <!-- SCAN + SEARCH -->
-  <div class="view active" id="view-scan">
-    <div class="searchrow">
-      <input id="searchbox" type="text" placeholder="Search any product, or type a barcode…"
-             autocomplete="off" />
-      <button id="searchbtn">Check</button>
-    </div>
-    <div class="camwrap">
-      <div id="reader"></div>
-      <div class="reticle">
-        <div class="box"></div>
-        <p>Point at a barcode</p>
+  <div class="phone" id="phone">
+    <div class="shell">
+
+      <!-- ============ LANDING ============ -->
+      <div class="view active" id="view-landing">
+        <div class="l-top">
+          <div class="wordmark">expecta</div>
+          <div class="l-badge">Clinically sourced</div>
+        </div>
+        <div class="l-hero">
+          <h1>Is it <em>safe</em> for your baby?</h1>
+          <p class="sub">Scan any product — food, skincare, medicine — and get a clear
+             verdict in seconds, tuned to exactly where you are in your pregnancy.</p>
+        </div>
+        <div class="l-feats">
+          <div class="feat"><div class="tick">✓</div>
+            <div><b>Verdict at the shelf</b><span>Point your camera at a barcode. No forums, no hour of Googling.</span></div></div>
+          <div class="feat"><div class="tick">✓</div>
+            <div><b>Clinical sources, cited</b><span>Cross-referenced against FDA drug labels and safety databases — with the reasoning shown.</span></div></div>
+          <div class="feat"><div class="tick">✓</div>
+            <div><b>Changes as you do</b><span>Thresholds shift each trimester and again when nursing begins.</span></div></div>
+        </div>
+        <div class="l-cta">
+          <button class="bigbtn" id="startbtn">Get started</button>
+          <p class="trust">Sources: openFDA · Open Food Facts · Open Beauty Facts · clinical AI reasoning<br/>
+             Informational screening — not medical advice.</p>
+        </div>
       </div>
+
+      <!-- ============ GUIDED STEP: STAGE ============ -->
+      <div class="view" id="view-stage">
+        <div class="stepper">Step 1 of 2</div>
+        <h2 class="g-title">Where are you in your journey?</h2>
+        <p class="g-sub">Safety thresholds are different in each trimester and while nursing —
+           we tune every verdict to your stage.</p>
+        <div class="stage-cards">
+          <button class="stage-card" data-stage="trimester_1"><div class="ic">🌱</div>
+            <div><b>First trimester</b><span>Weeks 1–12 · strictest thresholds</span></div></button>
+          <button class="stage-card" data-stage="trimester_2"><div class="ic">🌿</div>
+            <div><b>Second trimester</b><span>Weeks 13–27</span></div></button>
+          <button class="stage-card" data-stage="trimester_3"><div class="ic">🌸</div>
+            <div><b>Third trimester</b><span>Weeks 28–40 · watch NSAIDs</span></div></button>
+          <button class="stage-card" data-stage="breastfeeding"><div class="ic">🤱</div>
+            <div><b>Nursing</b><span>What transfers into milk</span></div></button>
+        </div>
+        <button class="backlink" id="backtolanding">← Back</button>
+      </div>
+
+      <!-- ============ SCAN + SEARCH ============ -->
+      <div class="view" id="view-scan">
+        <div class="s-head">
+          <div class="wordmark" style="font-size:17px">expecta</div>
+          <div class="pills" id="stagepills">
+            <button class="pill" data-stage="trimester_1">T1</button>
+            <button class="pill" data-stage="trimester_2">T2</button>
+            <button class="pill" data-stage="trimester_3">T3</button>
+            <button class="pill" data-stage="breastfeeding">Nursing</button>
+          </div>
+        </div>
+        <div class="searchrow">
+          <input id="searchbox" type="text" placeholder="Search any product, or type a barcode…" autocomplete="off" />
+          <button id="searchbtn">Check</button>
+        </div>
+        <div class="camwrap">
+          <div id="reader"></div>
+          <div class="reticle"><div class="box"></div><p>Point at a barcode</p></div>
+        </div>
+        <p class="camnote" id="camnote">Camera starting…</p>
+        <div class="results" id="results"></div>
+        <div class="recent" id="recentwrap" style="display:none">
+          <h4>Recent checks</h4>
+          <div class="recent-strip" id="recentstrip"></div>
+        </div>
+      </div>
+
+      <!-- ============ LOADING ============ -->
+      <div class="view" id="view-loading">
+        <div class="scan-anim">🧴</div>
+        <p class="pulse">Checking ingredients…</p>
+        <p class="loading-sub">Cross-referencing clinical databases</p>
+      </div>
+
+      <!-- ============ VERDICT ============ -->
+      <div class="view" id="view-verdict">
+        <div class="verdict-word" id="vword"></div>
+        <div class="pname" id="vproduct"></div>
+        <div class="stageline" id="vstage"></div>
+        <p class="reasoning" id="vreasoning"></p>
+        <div class="confline" id="vconf"></div>
+        <div class="flags" id="vflags"></div>
+        <div class="srcline" id="vsources"></div>
+        <footer>
+          <p class="disclaimer">Informational screening — not medical advice.</p>
+          <button class="bigbtn" id="againbtn">Scan another product</button>
+        </footer>
+      </div>
+
     </div>
-    <p class="camnote" id="camnote">Camera starting…</p>
-    <div class="results" id="results"></div>
-  </div>
-
-  <!-- LOADING -->
-  <div class="view" id="view-loading">
-    <p class="pulse">Checking ingredients…</p>
-  </div>
-
-  <!-- VERDICT -->
-  <div class="view" id="view-verdict">
-    <div class="verdict-word" id="vword"></div>
-    <div class="pname" id="vproduct"></div>
-    <div class="stageline" id="vstage"></div>
-    <p class="reasoning" id="vreasoning"></p>
-    <div class="confline" id="vconf"></div>
-    <div class="flags" id="vflags"></div>
-    <footer>
-      <p class="disclaimer">Informational screening — not medical advice.</p>
-      <button class="bigbtn" id="againbtn">Scan again</button>
-    </footer>
   </div>
 </div>
 
 <script>
-const API = "";  // same origin — FastAPI serves this page
+const API = "";
 const STAGE_LABEL = {
   trimester_1: "1st trimester", trimester_2: "2nd trimester",
   trimester_3: "3rd trimester", breastfeeding: "breastfeeding",
 };
-let stage = "trimester_1";
-let scanner = null;
-let scanning = false;
+let stage = localStorage.getItem("expecta_stage") || null;
+let scanner = null, scanning = false;
 
 function show(id) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById(id).classList.add("active");
 }
+function setWash(v) { document.getElementById("phone").className = "phone" + (v ? " wash-" + v : ""); }
+function syncPills() {
+  document.querySelectorAll("#stagepills .pill").forEach(p =>
+    p.classList.toggle("active", p.dataset.stage === stage));
+}
 
-/* ---- stage pills ---- */
-document.getElementById("stages").addEventListener("click", e => {
+/* ---- landing / guided flow ---- */
+document.getElementById("startbtn").addEventListener("click", () => show("view-stage"));
+document.getElementById("backtolanding").addEventListener("click", () => show("view-landing"));
+document.querySelectorAll(".stage-card").forEach(c => c.addEventListener("click", () => {
+  stage = c.dataset.stage;
+  localStorage.setItem("expecta_stage", stage);
+  syncPills();
+  show("view-scan");
+  startScanner();
+  loadRecent();
+}));
+document.getElementById("stagepills").addEventListener("click", e => {
   const btn = e.target.closest(".pill");
   if (!btn) return;
-  document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
-  btn.classList.add("active");
   stage = btn.dataset.stage;
+  localStorage.setItem("expecta_stage", stage);
+  syncPills();
 });
 
 /* ---- scanner ---- */
@@ -209,22 +342,13 @@ async function startScanner() {
   const note = document.getElementById("camnote");
   try {
     if (!scanner) {
-      scanner = new Html5Qrcode("reader", {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_E,
-        ],
-      });
+      scanner = new Html5Qrcode("reader", { formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_E ]});
     }
     if (scanning) return;
-    await scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 260, height: 140 } },
-      onScan,
-      () => {}
-    );
+    await scanner.start({ facingMode: "environment" },
+      { fps: 10, qrbox: { width: 250, height: 130 } }, onScan, () => {});
     scanning = true;
     note.textContent = "Or search above if scanning is awkward.";
   } catch (err) {
@@ -232,56 +356,44 @@ async function startScanner() {
   }
 }
 async function stopScanner() {
-  if (scanner && scanning) {
-    scanning = false;
-    try { await scanner.stop(); } catch (_) {}
-  }
+  if (scanner && scanning) { scanning = false; try { await scanner.stop(); } catch (_) {} }
 }
-function onScan(text) {
-  if (navigator.vibrate) navigator.vibrate(60);
-  checkBarcode(text);
-}
+function onScan(text) { if (navigator.vibrate) navigator.vibrate(60); checkBarcode(text); }
 
 /* ---- verdict fetch ---- */
 async function checkBarcode(barcode) {
   await stopScanner();
+  setWash(null);
   show("view-loading");
-  document.body.className = "";
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 45000);
   try {
     const res = await fetch(API + "/scan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ barcode, stage }),
-      signal: ctrl.signal,
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ barcode, stage: stage || "trimester_1" }), signal: ctrl.signal,
     });
     renderVerdict(await res.json());
   } catch (err) {
-    renderVerdict({
-      product_name: "Couldn't check this product",
-      verdict: "UNKNOWN",
+    renderVerdict({ product_name: "Couldn't check this product", verdict: "UNKNOWN",
       flagged_ingredients: [],
-      reasoning: "The check timed out or the server is unreachable. Please try again.",
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+      reasoning: "The check timed out or the server is unreachable. Please try again." });
+  } finally { clearTimeout(timer); }
 }
 
 function renderVerdict(d) {
   const v = (d.verdict || "UNKNOWN").toUpperCase();
-  document.body.className = "wash-" + v;
+  setWash(v);
   const word = { SAFE: "Safe", CAUTION: "Caution", AVOID: "Avoid", UNKNOWN: "Unknown" }[v] || "Unknown";
   const w = document.getElementById("vword");
-  w.textContent = word;
-  w.className = "verdict-word v-" + v;
+  w.textContent = word; w.className = "verdict-word v-" + v;
   document.getElementById("vproduct").textContent = d.product_name || "";
-  document.getElementById("vstage").textContent = "Checked for: " + STAGE_LABEL[stage];
+  document.getElementById("vstage").textContent = "Checked for: " + STAGE_LABEL[stage || "trimester_1"];
   document.getElementById("vreasoning").textContent = d.reasoning || "";
   document.getElementById("vconf").textContent =
     typeof d.confidence === "number" && d.confidence > 0
       ? "Confidence: " + Math.round(d.confidence * 100) + "%" : "";
+  document.getElementById("vsources").textContent =
+    d.sources && d.sources.length ? "Sources: " + d.sources.join(" · ") : "";
   const flags = document.getElementById("vflags");
   flags.innerHTML = "";
   for (const f of d.flagged_ingredients || []) {
@@ -289,11 +401,17 @@ function renderVerdict(d) {
     const card = document.createElement("div");
     card.className = "flag-card";
     card.innerHTML =
-      `<div class="flag-top"><span class="flag-name"></span>` +
-      `<span class="chip v-${r}">${r}</span></div>` +
+      `<div class="flag-top"><span class="flag-name"></span><span class="chip v-${r}">${r}</span></div>` +
       `<div class="flag-reason"></div>`;
     card.querySelector(".flag-name").textContent = f.name;
     card.querySelector(".flag-reason").textContent = f.reason || "";
+    if (f.fda_label) {
+      const q = document.createElement("div");
+      q.className = "fda-quote";
+      q.innerHTML = "<b>FDA drug label</b>";
+      q.appendChild(document.createTextNode(f.fda_label));
+      card.appendChild(q);
+    }
     flags.appendChild(card);
   }
   show("view-verdict");
@@ -303,7 +421,7 @@ function renderVerdict(d) {
 async function doSearch() {
   const q = document.getElementById("searchbox").value.trim();
   if (!q) return;
-  if (/^\d{8,14}$/.test(q)) { checkBarcode(q); return; }  // typed a barcode
+  if (/^\d{8,14}$/.test(q)) { checkBarcode(q); return; }
   const box = document.getElementById("results");
   box.innerHTML = '<p class="camnote">Searching…</p>';
   try {
@@ -311,8 +429,7 @@ async function doSearch() {
     const data = await res.json();
     box.innerHTML = "";
     if (!data.results.length) {
-      box.innerHTML = '<p class="camnote">No products found — try another name.</p>';
-      return;
+      box.innerHTML = '<p class="camnote">No products found — try another name.</p>'; return;
     }
     for (const p of data.results) {
       const card = document.createElement("button");
@@ -331,20 +448,41 @@ async function doSearch() {
   }
 }
 document.getElementById("searchbtn").addEventListener("click", doSearch);
-document.getElementById("searchbox").addEventListener("keydown", e => {
-  if (e.key === "Enter") doSearch();
-});
+document.getElementById("searchbox").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+
+/* ---- recent checks ---- */
+async function loadRecent() {
+  try {
+    const res = await fetch(API + "/history?limit=8");
+    const data = await res.json();
+    const wrap = document.getElementById("recentwrap");
+    const strip = document.getElementById("recentstrip");
+    strip.innerHTML = "";
+    if (!data.items.length) { wrap.style.display = "none"; return; }
+    wrap.style.display = "block";
+    for (const it of data.items) {
+      const chip = document.createElement("button");
+      chip.className = "rchip";
+      chip.innerHTML = `<span class="dot v-${(it.verdict || "UNKNOWN").toUpperCase()}"></span><span></span>`;
+      chip.querySelector("span:last-child").textContent = it.product;
+      chip.addEventListener("click", () => checkBarcode(it.barcode));
+      strip.appendChild(chip);
+    }
+  } catch (_) {}
+}
 
 /* ---- scan again ---- */
 document.getElementById("againbtn").addEventListener("click", () => {
-  document.body.className = "";
+  setWash(null);
   document.getElementById("results").innerHTML = "";
   document.getElementById("searchbox").value = "";
   show("view-scan");
   startScanner();
+  loadRecent();
 });
 
-startScanner();
+/* ---- returning users skip the landing ---- */
+if (stage) { syncPills(); show("view-scan"); startScanner(); loadRecent(); }
 </script>
 </body>
 </html>

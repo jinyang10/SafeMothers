@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
+import time
 from pathlib import Path
 
 import httpx
@@ -62,6 +64,129 @@ def health() -> dict:
 def coverage(limit: int = 20) -> dict:
     """Most-scanned ingredients we couldn't classify — the database roadmap."""
     return {"gaps": coverage_report(limit)}
+
+
+# ---- scan history (SQLite, same file as the verdict cache) ----
+
+_DB = Path(__file__).resolve().parent / "expecta.db"
+
+
+def _history_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(_DB)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scan_history ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, barcode TEXT, product TEXT,"
+        " stage TEXT, verdict TEXT, ts REAL)"
+    )
+    return conn
+
+
+def _log_scan(barcode: str, product: str, stage: str, verdict: str) -> None:
+    try:
+        with _history_db() as conn:
+            conn.execute(
+                "INSERT INTO scan_history (barcode, product, stage, verdict, ts)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (barcode, product, stage, verdict, time.time()),
+            )
+    except Exception:
+        pass
+
+
+@app.get("/history")
+def history(limit: int = 8) -> dict:
+    """Most recent checks, deduped by barcode, for the app's recall strip."""
+    try:
+        with _history_db() as conn:
+            rows = conn.execute(
+                "SELECT barcode, product, stage, verdict, MAX(ts) AS ts"
+                " FROM scan_history WHERE product != 'Unknown product'"
+                " GROUP BY barcode ORDER BY ts DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return {
+            "items": [
+                {"barcode": r[0], "product": r[1], "stage": r[2], "verdict": r[3]}
+                for r in rows
+            ]
+        }
+    except Exception:
+        return {"items": []}
+
+
+# ---- openFDA drug-label enrichment (real medical database, no key) ----
+
+
+def _openfda_pregnancy(ingredient: str) -> str | None:
+    """Pull the pregnancy/nursing section from an FDA drug label, if one exists."""
+    try:
+        r = httpx.get(
+            "https://api.fda.gov/drug/label.json",
+            params={
+                "search": f'active_ingredient:"{ingredient}"',
+                "limit": 1,
+            },
+            timeout=5.0,
+        )
+        if r.status_code != 200:
+            return None
+        results = r.json().get("results") or []
+        if not results:
+            return None
+        doc = results[0]
+        for field in (
+            "pregnancy",
+            "teratogenic_effects",
+            "nursing_mothers",
+            "pregnancy_or_breast_feeding",
+        ):
+            val = doc.get(field)
+            if val:
+                text = val[0] if isinstance(val, list) else str(val)
+                text = re.sub(r"\s+", " ", text).strip()
+                if len(text) > 260:
+                    text = text[:260].rsplit(" ", 1)[0] + "…"
+                return text
+    except Exception:
+        pass
+    return None
+
+
+# Common actives worth an FDA label lookup even when the ingredient string
+# is messy OCR text (e.g. "...fever retue buprofen usp...").
+_DRUG_TOKENS = (
+    "ibuprofen", "aspirin", "acetaminophen", "naproxen", "pseudoephedrine",
+    "diphenhydramine", "loratadine", "cetirizine", "salicylic acid",
+    "retinol", "tretinoin", "hydroquinone", "minoxidil", "nicotine",
+    "doxycycline", "benzoyl peroxide",
+)
+
+
+def _fda_query_terms(name: str) -> list[str]:
+    terms: list[str] = []
+    if len(name) <= 40:  # clean names query as-is
+        terms.append(name)
+    lowered = name.lower()
+    for token in _DRUG_TOKENS:
+        if token in lowered and token not in [t.lower() for t in terms]:
+            terms.append(token)
+    return terms[:2]
+
+
+def _enrich_with_openfda(result: dict) -> None:
+    """Attach FDA label text to up to 3 flagged CAUTION/AVOID ingredients."""
+    hits = 0
+    for flag in result.get("flagged_ingredients", []):
+        if hits >= 3 or flag.get("risk") not in ("CAUTION", "AVOID"):
+            continue
+        for term in _fda_query_terms(flag["name"]):
+            evidence = _openfda_pregnancy(term)
+            if evidence:
+                flag["fda_label"] = evidence
+                hits += 1
+                break
+    if hits and "openFDA" not in result.get("sources", []):
+        result["sources"] = [*result.get("sources", []), "openFDA"]
 
 
 def _split_ingredients(text: str) -> list[str]:
@@ -161,6 +286,7 @@ def scan(req: ScanRequest) -> dict:
         ).strip()
         named["confidence"] = min(named.get("confidence", 0.0), 0.4)
         named["sources"] = [product["source"], *named.get("sources", [])]
+        _log_scan(req.barcode.strip(), product["name"], req.stage, named["verdict"])
         return {
             "product_name": product["name"],
             "image": product.get("image"),
@@ -168,6 +294,8 @@ def scan(req: ScanRequest) -> dict:
         }
     result = get_verdict(product["ingredients"], req.stage)
     result["sources"] = [product["source"], *result.get("sources", [])]
+    _enrich_with_openfda(result)
+    _log_scan(req.barcode.strip(), product["name"], req.stage, result["verdict"])
     return {"product_name": product["name"], "image": product.get("image"), **result}
 
 
