@@ -1,5 +1,15 @@
 # Person C — Gemini Flash Reasoner + Safety Guardrails
 
+> **STATUS: BUILT AND TESTED LIVE** — see `api/verdict_engine.py` + `api/rules.json`. The shipped engine goes beyond this spec:
+>
+> - **Structured output:** strict `json_schema` response format on Gemini 3.6 Flash, automatic retry with `json_object` fallback; long ingredient lists chunked at 40 per call.
+> - **SQLite verdict cache** (`api/expecta.db`, gitignored): keyed on ingredients + stage + model + rules version. Repeat scans return in ~1ms — and every scan grows the local database (the moat).
+> - **Coverage-gap logging:** UNKNOWN ingredients are recorded with hit counts; `coverage_report()` returns the most-scanned unclassified ingredients so we know which rules to write next.
+> - **INCI alias normalization:** `aqua`→water, `retinyl palmitate`→retinyl, `alcohol denat`→alcohol, dose strings ("0.3%") stripped — so guardrails catch label spellings even when the reasoner is down.
+> - **Additive response fields:** `confidence` (rules 0.95 / LLM 0.7 / fail-closed 0.3, product = min) and `stage_notes` (why this trimester's thresholds differ). Person B's contract fields are unchanged.
+> - **37 guardrail rules** now including wintergreen (methyl salicylate), pennyroyal, blue cohosh, goldenseal, kava, tetracyclines, ACE inhibitors, statins, nicotine.
+> - Fail-closed verified: reasoner disabled → rules still catch retinoids, rest degrades to UNKNOWN, degraded verdicts are never cached.
+
 **Goal (15 min):** `verdict_engine.py` exposing one function. **Gemini Flash (via OpenRouter) is the native reasoner** — every scan goes through it for stage-aware clinical reasoning. A small `rules.json` acts as a deterministic guardrail layer that can only make the verdict stricter, never looser. This module is the product's moat.
 
 Read `PROJECTCONTEXT.md` first, especially the safety policy: **never default to SAFE, fail closed to UNKNOWN.**

@@ -174,5 +174,82 @@
     "breastfeeding": "CAUTION",
     "reason": "Essential oils with uterine-stimulant reports; avoid concentrated use",
     "source": "clinical caution"
+  },
+  {
+    "match": ["wintergreen oil", "wintergreen"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Methyl salicylate; potent salicylate absorbed through skin",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["pennyroyal"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Hepatotoxic abortifacient herb; documented severe toxicity",
+    "source": "case reports / clinical guidance"
+  },
+  {
+    "match": ["blue cohosh"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Uterotonic herb linked to neonatal cardiac toxicity",
+    "source": "case reports / clinical guidance"
+  },
+  {
+    "match": ["goldenseal", "berberine"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Berberine can worsen neonatal jaundice (kernicterus risk)",
+    "source": "LactMed / clinical guidance"
+  },
+  {
+    "match": ["kava"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Hepatotoxicity risk; passes into breast milk",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["tetracycline", "doxycycline", "minocycline"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Tetracyclines stain fetal teeth and affect bone growth",
+    "source": "FDA Category D"
+  },
+  {
+    "match": ["lisinopril", "enalapril", "ramipril", "captopril"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "ACE inhibitors cause fetal renal damage, especially 2nd/3rd trimester",
+    "source": "FDA boxed warning"
+  },
+  {
+    "match": ["atorvastatin", "simvastatin", "rosuvastatin", "statin"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Statins interfere with cholesterol-dependent fetal development",
+    "source": "FDA / clinical guidance"
+  },
+  {
+    "match": ["nicotine", "tobacco"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "AVOID",
+    "reason": "Vasoconstrictor; fetal growth restriction and SIDS association",
+    "source": "CDC / ACOG"
+  },
+  {
+    "match": ["camphor"],
+    "pregnancy": "CAUTION",
+    "breastfeeding": "CAUTION",
+    "reason": "Toxic if ingested; limit topical use over large areas",
+    "source": "clinical guidance"
+  },
+  {
+    "match": ["essential oil blend", "mugwort", "wormwood", "thuja"],
+    "pregnancy": "AVOID",
+    "breastfeeding": "CAUTION",
+    "reason": "Thujone-containing botanicals with uterotonic/neurotoxic reports",
+    "source": "clinical caution"
   }
 ]
