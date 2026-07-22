@@ -79,7 +79,7 @@ def call_reasoner(ingredients: list[str], stage: str) -> dict | None:
     if not api_key:
         return None
 
-    model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+    model = os.getenv("OPENROUTER_MODEL", "google/gemini-3.6-flash")
     try:
         r = httpx.post(
             "https://openrouter.ai/api/v1/chat/completions",

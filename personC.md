@@ -22,7 +22,7 @@ def get_verdict(ingredients: list[str], stage: str) -> dict:
 
 ### 1. The Gemini Flash call (min 0–8) — this is the core, build it first
 
-OpenRouter chat completions, model slug `google/gemini-flash-latest` (verify the exact Flash slug available to your key at openrouter.ai/models — payload shape is identical regardless):
+OpenRouter chat completions, model slug **`google/gemini-3.6-flash`** (Gemini 3.6 Flash — native reasoner):
 
 ```python
 import httpx, os, json
@@ -37,7 +37,7 @@ def call_reasoner(ingredients: list[str], stage: str) -> dict | None:
                 "X-Title": "Expecta",
             },
             json={
-                "model": "google/gemini-flash-latest",
+                "model": "google/gemini-3.6-flash",
                 "temperature": 0,
                 "response_format": {"type": "json_object"},
                 "messages": [
