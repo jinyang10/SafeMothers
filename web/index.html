@@ -122,6 +122,14 @@
     border-radius: var(--radius); box-shadow: 0 0 0 2000px rgba(0,0,0,0.22); }
   .reticle p { color: #fff; font-size: 13px; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
   .camnote { padding-top: 9px; font-size: 12.5px; color: var(--ink-soft); text-align: center; }
+  .scan-actions { display: flex; justify-content: center; gap: 16px; padding-top: 8px; flex-wrap: wrap; }
+  .linkbtn { background: none; border: none; color: var(--ink); font: 600 12.5px "Inter";
+             cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; }
+  /* html5-qrcode injects its own UI — keep it filling the cam box */
+  #reader, #reader > div, #reader video, #reader canvas {
+    width: 100% !important; height: 100% !important; border: none !important;
+  }
+  #reader img { display: none !important; }
   .recent { padding-top: 16px; }
   .recent h4 { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
                color: var(--ink-soft); padding-bottom: 8px; }
@@ -258,14 +266,19 @@
           </div>
         </div>
         <div class="searchrow">
-          <input id="searchbox" type="text" placeholder="Search any product, or type a barcode…" autocomplete="off" />
+          <input id="searchbox" type="text" inputmode="numeric" placeholder="Type barcode digits, or search a name…" autocomplete="off" />
           <button id="searchbtn">Check</button>
         </div>
-        <div class="camwrap">
+        <div class="camwrap" id="camwrap">
           <div id="reader"></div>
-          <div class="reticle"><div class="box"></div><p>Point at a barcode</p></div>
+          <div class="reticle" id="reticle"><div class="box"></div><p>Point at a barcode</p></div>
         </div>
-        <p class="camnote" id="camnote">Camera starting…</p>
+        <p class="camnote" id="camnote">Starting camera…</p>
+        <div class="scan-actions" id="scanactions">
+          <button type="button" class="linkbtn" id="retrycam">Retry camera</button>
+          <label class="linkbtn" for="barcodefile">Upload barcode photo</label>
+          <input type="file" id="barcodefile" accept="image/*" capture="environment" hidden />
+        </div>
         <div class="results" id="results"></div>
         <div class="recent" id="recentwrap" style="display:none">
           <h4>Recent checks</h4>
@@ -306,7 +319,7 @@ const STAGE_LABEL = {
   trimester_3: "3rd trimester", breastfeeding: "breastfeeding",
 };
 let stage = localStorage.getItem("expecta_stage") || null;
-let scanner = null, scanning = false;
+let scanner = null, scanning = false, busy = false, lastCode = "", lastCodeAt = 0;
 
 function show(id) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
@@ -317,6 +330,14 @@ function syncPills() {
   document.querySelectorAll("#stagepills .pill").forEach(p =>
     p.classList.toggle("active", p.dataset.stage === stage));
 }
+function goScan() {
+  show("view-scan");
+  syncPills();
+  loadRecent();
+  // Wait for the scan view to lay out — starting the camera while
+  // display:none gives html5-qrcode a 0×0 box and it never recovers.
+  requestAnimationFrame(() => setTimeout(startScanner, 120));
+}
 
 /* ---- landing / guided flow ---- */
 document.getElementById("startbtn").addEventListener("click", () => show("view-stage"));
@@ -324,10 +345,7 @@ document.getElementById("backtolanding").addEventListener("click", () => show("v
 document.querySelectorAll(".stage-card").forEach(c => c.addEventListener("click", () => {
   stage = c.dataset.stage;
   localStorage.setItem("expecta_stage", stage);
-  syncPills();
-  show("view-scan");
-  startScanner();
-  loadRecent();
+  goScan();
 }));
 document.getElementById("stagepills").addEventListener("click", e => {
   const btn = e.target.closest(".pill");
@@ -338,37 +356,148 @@ document.getElementById("stagepills").addEventListener("click", e => {
 });
 
 /* ---- scanner ---- */
+function normalizeCode(raw) {
+  return String(raw || "").replace(/\D/g, "");
+}
+
+async function destroyScanner() {
+  if (!scanner) return;
+  try { if (scanning) await scanner.stop(); } catch (_) {}
+  try { await scanner.clear(); } catch (_) {}
+  scanning = false;
+  scanner = null;
+  // Wipe leftover DOM from html5-qrcode so the next start is clean.
+  const el = document.getElementById("reader");
+  if (el) el.innerHTML = "";
+}
+
 async function startScanner() {
   const note = document.getElementById("camnote");
-  try {
-    if (!scanner) {
-      scanner = new Html5Qrcode("reader", {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_E ],
-        // Native BarcodeDetector (Chrome/Android) is far more reliable
-        // on 1D barcodes than the JS fallback decoder.
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-      });
-    }
-    if (scanning) return;
-    await scanner.start({ facingMode: "environment" },
-      { fps: 12, qrbox: (w, h) => ({ width: Math.floor(w * 0.8), height: Math.floor(h * 0.45) }) },
-      onScan, () => {});
-    scanning = true;
-    note.textContent = "Or search above if scanning is awkward.";
-  } catch (err) {
-    note.textContent = "Camera unavailable — use the search box above.";
+  if (busy) return;
+  note.textContent = "Starting camera…";
+  document.getElementById("reticle").style.display = "";
+
+  // Secure context required (localhost or HTTPS).
+  if (!window.isSecureContext) {
+    note.textContent = "Camera needs HTTPS or localhost. Type the barcode digits above, or upload a photo.";
+    return;
   }
+  if (typeof Html5Qrcode === "undefined") {
+    note.textContent = "Scanner library failed to load. Type the barcode digits above.";
+    return;
+  }
+
+  await destroyScanner();
+
+  const config = {
+    fps: 15,
+    qrbox: (w, h) => ({
+      width: Math.max(180, Math.floor(w * 0.85)),
+      height: Math.max(80, Math.floor(h * 0.38)),
+    }),
+    aspectRatio: 1.333,
+    disableFlip: false,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+  };
+  const formats = [
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39,
+  ];
+
+  // Prefer rear camera; fall back to front / any camera (laptops).
+  const cameras = [
+    { facingMode: { ideal: "environment" } },
+    { facingMode: "user" },
+    { facingMode: "environment" },
+  ];
+
+  scanner = new Html5Qrcode("reader", { formatsToSupport: formats, verbose: false });
+
+  let lastErr = null;
+  for (const cam of cameras) {
+    try {
+      await scanner.start(cam, config, onScan, () => {});
+      scanning = true;
+      note.textContent = "Hold steady — barcode fills the frame. Or type / upload below.";
+      return;
+    } catch (err) {
+      lastErr = err;
+      try { await scanner.stop(); } catch (_) {}
+    }
+  }
+
+  // Last resort: pick any enumerated camera by id.
+  try {
+    const list = await Html5Qrcode.getCameras();
+    if (list && list.length) {
+      await scanner.start(list[0].id, config, onScan, () => {});
+      scanning = true;
+      note.textContent = "Camera on. Hold the barcode in the frame.";
+      return;
+    }
+  } catch (err) {
+    lastErr = err;
+  }
+
+  note.textContent = "Camera blocked or unavailable. Type the barcode digits above, or upload a photo. "
+    + (lastErr && lastErr.message ? "(" + lastErr.message.slice(0, 80) + ")" : "");
 }
-async function stopScanner() {
-  if (scanner && scanning) { scanning = false; try { await scanner.stop(); } catch (_) {} }
+
+function onScan(text) {
+  const code = normalizeCode(text);
+  if (code.length < 8) return;
+  const now = Date.now();
+  // Debounce: library fires dozens of times per second on the same code.
+  if (busy || (code === lastCode && now - lastCodeAt < 2500)) return;
+  lastCode = code; lastCodeAt = now;
+  if (navigator.vibrate) navigator.vibrate(50);
+  checkBarcode(code);
 }
-function onScan(text) { if (navigator.vibrate) navigator.vibrate(60); checkBarcode(text); }
+
+document.getElementById("retrycam").addEventListener("click", () => startScanner());
+
+document.getElementById("barcodefile").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const note = document.getElementById("camnote");
+  note.textContent = "Reading barcode from photo…";
+  try {
+    await destroyScanner();
+    scanner = new Html5Qrcode("reader", {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      ],
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      verbose: false,
+    });
+    const decoded = await scanner.scanFile(file, true);
+    const code = normalizeCode(decoded);
+    if (code.length < 8) throw new Error("No barcode found in that photo");
+    note.textContent = "Found " + code;
+    checkBarcode(code);
+  } catch (err) {
+    note.textContent = "Couldn't read a barcode in that photo. Try a sharper close-up, or type the digits.";
+    startScanner();
+  }
+});
 
 /* ---- verdict fetch ---- */
 async function checkBarcode(barcode) {
-  await stopScanner();
+  const code = normalizeCode(barcode);
+  if (code.length < 8) {
+    document.getElementById("camnote").textContent = "That doesn't look like a barcode. Enter 8–14 digits.";
+    return;
+  }
+  if (busy) return;
+  busy = true;
+  await destroyScanner();
   setWash(null);
   show("view-loading");
   const ctrl = new AbortController();
@@ -376,18 +505,24 @@ async function checkBarcode(barcode) {
   try {
     const res = await fetch(API + "/scan", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ barcode, stage: stage || "trimester_1" }), signal: ctrl.signal,
+      body: JSON.stringify({ barcode: code, stage: stage || "trimester_1" }), signal: ctrl.signal,
     });
+    if (!res.ok) throw new Error("HTTP " + res.status);
     renderVerdict(await res.json());
   } catch (err) {
     renderVerdict({ product_name: "Couldn't check this product", verdict: "UNKNOWN",
       flagged_ingredients: [],
-      reasoning: "The check timed out or the server is unreachable. Please try again." });
-  } finally { clearTimeout(timer); }
+      reasoning: "The check timed out or the server is unreachable. Please try again. (" + (err.message || "error") + ")" });
+  } finally {
+    clearTimeout(timer);
+    busy = false;
+  }
 }
 
 async function checkName(name, actives) {
-  await stopScanner();
+  if (busy) return;
+  busy = true;
+  await destroyScanner();
   setWash(null);
   show("view-loading");
   const ctrl = new AbortController();
@@ -397,11 +532,12 @@ async function checkName(name, actives) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, actives, stage: stage || "trimester_1" }), signal: ctrl.signal,
     });
+    if (!res.ok) throw new Error("HTTP " + res.status);
     renderVerdict(await res.json());
   } catch (err) {
     renderVerdict({ product_name: name, verdict: "UNKNOWN", flagged_ingredients: [],
       reasoning: "The check timed out or the server is unreachable. Please try again." });
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); busy = false; }
 }
 
 function renderVerdict(d) {
@@ -445,7 +581,12 @@ function renderVerdict(d) {
 async function doSearch() {
   const q = document.getElementById("searchbox").value.trim();
   if (!q) return;
-  if (/^\d{8,14}$/.test(q)) { checkBarcode(q); return; }
+  const digits = normalizeCode(q);
+  // Pure (or mostly) barcode digits typed into the box → go straight to /scan.
+  if (digits.length >= 8 && digits.length <= 14 && digits.length >= q.replace(/\s/g, "").length * 0.8) {
+    checkBarcode(digits);
+    return;
+  }
   const box = document.getElementById("results");
   box.innerHTML = '<p class="camnote">Searching…</p>';
   try {
@@ -506,13 +647,11 @@ document.getElementById("againbtn").addEventListener("click", () => {
   setWash(null);
   document.getElementById("results").innerHTML = "";
   document.getElementById("searchbox").value = "";
-  show("view-scan");
-  startScanner();
-  loadRecent();
+  goScan();
 });
 
 /* ---- returning users skip the landing ---- */
-if (stage) { syncPills(); show("view-scan"); startScanner(); loadRecent(); }
+if (stage) goScan();
 </script>
 </body>
 </html>

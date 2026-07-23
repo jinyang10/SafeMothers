@@ -242,26 +242,76 @@ def _from_barcodelookup(barcode: str) -> dict | None:
         return None
 
 
+def _clean_ingredients(raw: list[str]) -> list[str]:
+    """Drop OCR garbage / drug-facts walls of text that aren't ingredients."""
+    junk = (
+        "symptoms", "stop use", "ask a doctor", "keep out of", "manufactured",
+        "distributed", "www.", ".com", "nonsteroidal", "corporation", "wholesale",
+        "po box", "drive", "street", "avenue", "usa for", "zip", "allergic reaction",
+        "blisters", "fever retue", "pain reliever",
+    )
+    out: list[str] = []
+    for item in raw:
+        s = (item or "").strip()
+        if not s or len(s) > 60:
+            continue
+        low = s.lower()
+        if any(j in low for j in junk):
+            continue
+        if re.search(r"\b\d{5}\b", low):  # ZIP code → address line
+            continue
+        if sum(c.isalpha() for c in s) < 3:
+            continue
+        # Prefer entries that look like chemical / INCI names (few spaces, or known token)
+        out.append(s)
+    return out
+
+
+def _usable_ingredients(ingredients: list[str], product_name: str) -> list[str]:
+    """If the 'ingredient list' is packaging OCR garbage, fall back to the name
+    plus any known actives buried in the junk."""
+    cleaned = _clean_ingredients(ingredients)
+    # Mine known drug/skincare tokens out of the raw dump + product name.
+    blob = " ".join(ingredients + [product_name]).lower()
+    mined = [t.title() if " " not in t else t for t in _DRUG_TOKENS if t in blob]
+    if mined:
+        # Prefer mined actives — they're the medically relevant signal.
+        return list(dict.fromkeys(mined))
+    if cleaned and len(cleaned) <= 40:
+        return cleaned
+    # Name alone as last resort
+    return [product_name] if product_name else []
+
+
 def _from_openfacts(barcode: str, base: str, label: str) -> dict | None:
-    try:
-        r = httpx.get(f"{base}/api/v2/product/{barcode}.json", timeout=TIMEOUT)
-        data = r.json()
-        if data.get("status") != 1:
-            return None
-        p = data.get("product") or {}
-        ingredients = [
-            i.get("text", "").strip()
-            for i in (p.get("ingredients") or [])
-            if i.get("text", "").strip()
-        ] or _split_ingredients(p.get("ingredients_text") or "")
-        return {
-            "name": p.get("product_name") or p.get("generic_name") or "Unknown product",
-            "ingredients": ingredients,
-            "image": p.get("image_front_small_url"),
-            "source": label,
-        }
-    except Exception:
-        return None
+    # v2 first, then v0 — some products only resolve on one of them.
+    for path in (f"/api/v2/product/{barcode}.json", f"/api/v0/product/{barcode}.json"):
+        try:
+            r = httpx.get(f"{base}{path}", timeout=TIMEOUT)
+            data = r.json()
+            if data.get("status") != 1:
+                continue
+            p = data.get("product") or {}
+            ingredients = _clean_ingredients(
+                [
+                    i.get("text", "").strip()
+                    for i in (p.get("ingredients") or [])
+                    if i.get("text", "").strip()
+                ]
+                or _split_ingredients(p.get("ingredients_text") or "")
+            )
+            name = p.get("product_name") or p.get("generic_name") or "Unknown product"
+            if not name or name == "Unknown product":
+                continue
+            return {
+                "name": name,
+                "ingredients": ingredients,
+                "image": p.get("image_front_small_url") or p.get("image_url"),
+                "source": label,
+            }
+        except Exception:
+            continue
+    return None
 
 
 def _resolve_product(barcode: str) -> dict | None:
@@ -286,7 +336,18 @@ def _resolve_product(barcode: str) -> dict | None:
 
 @app.post("/scan")
 def scan(req: ScanRequest) -> dict:
-    product = _resolve_product(req.barcode.strip())
+    code = re.sub(r"\D", "", req.barcode or "")
+    if len(code) < 8:
+        return {
+            "product_name": "Invalid barcode",
+            "verdict": "UNKNOWN",
+            "flagged_ingredients": [],
+            "reasoning": "That barcode looks too short. Enter 8–14 digits from the package.",
+            "sources": [],
+            "confidence": 0.0,
+            "image": None,
+        }
+    product = _resolve_product(code)
     if product is None:
         return {
             "product_name": "Unknown product",
@@ -298,30 +359,34 @@ def scan(req: ScanRequest) -> dict:
             "confidence": 0.0,
             "image": None,
         }
-    if not product["ingredients"]:
-        # No ingredient list — analyze the product NAME as a last resort.
-        # A name can prove danger ("Retinol Serum") but never safety, so a
-        # SAFE outcome here is downgraded to UNKNOWN.
-        named = get_verdict([product["name"]], req.stage)
-        if named["verdict"] == "SAFE":
-            named["verdict"] = "UNKNOWN"
-            named["flagged_ingredients"] = []
-        named["reasoning"] = (
-            "No ingredient list is available for this product, so this is "
-            "based on the product name only. " + (named["reasoning"] or "")
+
+    usable = _usable_ingredients(product.get("ingredients") or [], product["name"])
+    name_only = usable == [product["name"]] or not usable
+
+    if not usable:
+        usable = [product["name"]]
+        name_only = True
+
+    result = get_verdict(usable, req.stage)
+    if name_only and result["verdict"] == "SAFE":
+        # A bare product name can prove danger, never safety.
+        result["verdict"] = "UNKNOWN"
+        result["flagged_ingredients"] = []
+        result["confidence"] = min(result.get("confidence", 0.0), 0.4)
+        result["reasoning"] = (
+            "No reliable ingredient list is available for this product, so this "
+            "is based on the product name only. " + (result.get("reasoning") or "")
         ).strip()
-        named["confidence"] = min(named.get("confidence", 0.0), 0.4)
-        named["sources"] = [product["source"], *named.get("sources", [])]
-        _log_scan(req.barcode.strip(), product["name"], req.stage, named["verdict"])
-        return {
-            "product_name": product["name"],
-            "image": product.get("image"),
-            **named,
-        }
-    result = get_verdict(product["ingredients"], req.stage)
+    elif name_only:
+        result["confidence"] = min(result.get("confidence", 0.0), 0.55)
+        result["reasoning"] = (
+            "Ingredient data was incomplete — assessed from the product name "
+            "and known actives. " + (result.get("reasoning") or "")
+        ).strip()
+
     result["sources"] = [product["source"], *result.get("sources", [])]
     _enrich_with_openfda(result)
-    _log_scan(req.barcode.strip(), product["name"], req.stage, result["verdict"])
+    _log_scan(code, product["name"], req.stage, result["verdict"])
     return {"product_name": product["name"], "image": product.get("image"), **result}
 
 
@@ -463,6 +528,16 @@ def scan_name(req: NameRequest) -> dict:
     _enrich_with_openfda(result)
     _log_scan("name:" + name.lower(), name, req.stage, result["verdict"])
     return {"product_name": name, "image": None, **result}
+
+
+@app.middleware("http")
+async def no_cache_html(request, call_next):
+    """Scanner fixes must load immediately — never serve a stale index.html."""
+    response = await call_next(request)
+    path = request.url.path
+    if path in ("/", "/index.html") or path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
