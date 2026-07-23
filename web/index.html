@@ -113,23 +113,24 @@
   .searchrow button { padding: 0 20px; font: 600 14px "Inter"; border: none; cursor: pointer;
     border-radius: var(--radius); background: var(--ink); color: #fff; }
   .camwrap { position: relative; border-radius: var(--radius); overflow: hidden;
-             background: #14181D; aspect-ratio: 4/3.4; flex: none; }
-  #reader { width: 100%; height: 100%; }
-  #reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
+             background: #14181D; aspect-ratio: 4 / 3; flex: none; min-height: 220px; }
+  #camvideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+              background: #14181D; transform: scaleX(-1); }
+  #camvideo.rear { transform: none; }
   .reticle { position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; pointer-events: none; gap: 12px; }
-  .reticle .box { width: 68%; height: 40%; border: 2.5px solid rgba(255,255,255,0.92);
-    border-radius: var(--radius); box-shadow: 0 0 0 2000px rgba(0,0,0,0.22); }
+    align-items: center; justify-content: center; pointer-events: none; gap: 12px; z-index: 2; }
+  .reticle .box { width: 72%; height: 42%; border: 2.5px solid rgba(255,255,255,0.92);
+    border-radius: var(--radius); box-shadow: 0 0 0 2000px rgba(0,0,0,0.28); }
   .reticle p { color: #fff; font-size: 13px; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+  .cam-cta { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 3; padding: 14px 22px; border: none; border-radius: 999px; cursor: pointer;
+    font: 600 15px "Inter"; background: #fff; color: var(--ink);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+  .cam-cta.hidden { display: none; }
   .camnote { padding-top: 9px; font-size: 12.5px; color: var(--ink-soft); text-align: center; }
   .scan-actions { display: flex; justify-content: center; gap: 16px; padding-top: 8px; flex-wrap: wrap; }
   .linkbtn { background: none; border: none; color: var(--ink); font: 600 12.5px "Inter";
              cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; }
-  /* html5-qrcode injects its own UI — keep it filling the cam box */
-  #reader, #reader > div, #reader video, #reader canvas {
-    width: 100% !important; height: 100% !important; border: none !important;
-  }
-  #reader img { display: none !important; }
   .recent { padding-top: 16px; }
   .recent h4 { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
                color: var(--ink-soft); padding-bottom: 8px; }
@@ -270,10 +271,11 @@
           <button id="searchbtn">Check</button>
         </div>
         <div class="camwrap" id="camwrap">
-          <div id="reader"></div>
+          <video id="camvideo" playsinline muted autoplay></video>
           <div class="reticle" id="reticle"><div class="box"></div><p>Point at a barcode</p></div>
+          <button type="button" class="cam-cta" id="enablecam">Enable camera</button>
         </div>
-        <p class="camnote" id="camnote">Starting camera…</p>
+        <p class="camnote" id="camnote">Tap “Enable camera” to start scanning.</p>
         <div class="scan-actions" id="scanactions">
           <button type="button" class="linkbtn" id="retrycam">Retry camera</button>
           <label class="linkbtn" for="barcodefile">Upload barcode photo</label>
@@ -319,7 +321,8 @@ const STAGE_LABEL = {
   trimester_3: "3rd trimester", breastfeeding: "breastfeeding",
 };
 let stage = localStorage.getItem("expecta_stage") || null;
-let scanner = null, scanning = false, busy = false, lastCode = "", lastCodeAt = 0;
+let stream = null, scanning = false, busy = false, lastCode = "", lastCodeAt = 0, rafId = 0;
+let detector = null;
 
 function show(id) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
@@ -334,9 +337,15 @@ function goScan() {
   show("view-scan");
   syncPills();
   loadRecent();
-  // Wait for the scan view to lay out — starting the camera while
-  // display:none gives html5-qrcode a 0×0 box and it never recovers.
-  requestAnimationFrame(() => setTimeout(startScanner, 120));
+  // Do NOT auto-start the camera here. Browsers require a fresh user gesture
+  // for getUserMedia — show the Enable button instead.
+  showCamButton(true);
+  document.getElementById("camnote").textContent =
+    "Tap “Enable camera” (browsers require a tap), or type / upload a barcode.";
+}
+
+function showCamButton(on) {
+  document.getElementById("enablecam").classList.toggle("hidden", !on);
 }
 
 /* ---- landing / guided flow ---- */
@@ -346,6 +355,8 @@ document.querySelectorAll(".stage-card").forEach(c => c.addEventListener("click"
   stage = c.dataset.stage;
   localStorage.setItem("expecta_stage", stage);
   goScan();
+  // Same click is a valid user gesture — start the camera immediately.
+  startCamera();
 }));
 document.getElementById("stagepills").addEventListener("click", e => {
   const btn = e.target.closest(".pill");
@@ -355,110 +366,120 @@ document.getElementById("stagepills").addEventListener("click", e => {
   syncPills();
 });
 
-/* ---- scanner ---- */
+/* ---- native camera (getUserMedia + BarcodeDetector) ---- */
 function normalizeCode(raw) {
   return String(raw || "").replace(/\D/g, "");
 }
 
-async function destroyScanner() {
-  if (!scanner) return;
-  try { if (scanning) await scanner.stop(); } catch (_) {}
-  try { await scanner.clear(); } catch (_) {}
+function stopCamera() {
   scanning = false;
-  scanner = null;
-  // Wipe leftover DOM from html5-qrcode so the next start is clean.
-  const el = document.getElementById("reader");
-  if (el) el.innerHTML = "";
+  if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  const video = document.getElementById("camvideo");
+  video.srcObject = null;
 }
 
-async function startScanner() {
+async function startCamera() {
   const note = document.getElementById("camnote");
+  const video = document.getElementById("camvideo");
   if (busy) return;
-  note.textContent = "Starting camera…";
-  document.getElementById("reticle").style.display = "";
 
-  // Secure context required (localhost or HTTPS).
   if (!window.isSecureContext) {
-    note.textContent = "Camera needs HTTPS or localhost. Type the barcode digits above, or upload a photo.";
+    note.textContent = "Camera needs http://localhost or HTTPS. Open localhost:8000, or type / upload the barcode.";
+    showCamButton(true);
     return;
   }
-  if (typeof Html5Qrcode === "undefined") {
-    note.textContent = "Scanner library failed to load. Type the barcode digits above.";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    note.textContent = "This browser has no camera API. Type the barcode digits or upload a photo.";
+    showCamButton(true);
     return;
   }
 
-  await destroyScanner();
+  note.textContent = "Asking for camera permission…";
+  stopCamera();
 
-  const config = {
-    fps: 15,
-    qrbox: (w, h) => ({
-      width: Math.max(180, Math.floor(w * 0.85)),
-      height: Math.max(80, Math.floor(h * 0.38)),
-    }),
-    aspectRatio: 1.333,
-    disableFlip: false,
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-  };
-  const formats = [
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-    Html5QrcodeSupportedFormats.CODE_128,
-    Html5QrcodeSupportedFormats.CODE_39,
+  const attempts = [
+    { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, rear: true },
+    { video: { facingMode: "environment" }, rear: true },
+    { video: { facingMode: "user" }, rear: false },
+    { video: true, rear: false },
   ];
-
-  // Prefer rear camera; fall back to front / any camera (laptops).
-  const cameras = [
-    { facingMode: { ideal: "environment" } },
-    { facingMode: "user" },
-    { facingMode: "environment" },
-  ];
-
-  scanner = new Html5Qrcode("reader", { formatsToSupport: formats, verbose: false });
 
   let lastErr = null;
-  for (const cam of cameras) {
+  for (const attempt of attempts) {
     try {
-      await scanner.start(cam, config, onScan, () => {});
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: attempt.video });
+      video.srcObject = stream;
+      video.classList.toggle("rear", attempt.rear);
+      await video.play();
       scanning = true;
-      note.textContent = "Hold steady — barcode fills the frame. Or type / upload below.";
+      showCamButton(false);
+      note.textContent = "Camera on — hold a barcode in the frame.";
+      startDetectLoop();
       return;
     } catch (err) {
       lastErr = err;
-      try { await scanner.stop(); } catch (_) {}
+      stopCamera();
     }
   }
 
-  // Last resort: pick any enumerated camera by id.
-  try {
-    const list = await Html5Qrcode.getCameras();
-    if (list && list.length) {
-      await scanner.start(list[0].id, config, onScan, () => {});
-      scanning = true;
-      note.textContent = "Camera on. Hold the barcode in the frame.";
-      return;
+  const msg = (lastErr && (lastErr.name || lastErr.message)) || "unknown error";
+  if (/NotAllowed|Permission/i.test(msg)) {
+    note.textContent = "Camera permission blocked. Allow camera for this site in the browser address bar, then tap Enable camera.";
+  } else if (/NotFound|DevicesNotFound/i.test(msg)) {
+    note.textContent = "No camera found on this device. Type the barcode or upload a photo.";
+  } else {
+    note.textContent = "Couldn't start camera (" + msg + "). Type the barcode or upload a photo.";
+  }
+  showCamButton(true);
+}
+
+function startDetectLoop() {
+  const video = document.getElementById("camvideo");
+  if ("BarcodeDetector" in window) {
+    try {
+      detector = new BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"],
+      });
+    } catch (_) {
+      detector = new BarcodeDetector();
     }
-  } catch (err) {
-    lastErr = err;
+  } else {
+    detector = null;
+    document.getElementById("camnote").textContent =
+      "Camera on. This browser can't auto-read barcodes — take/upload a photo, or type the digits.";
   }
 
-  note.textContent = "Camera blocked or unavailable. Type the barcode digits above, or upload a photo. "
-    + (lastErr && lastErr.message ? "(" + lastErr.message.slice(0, 80) + ")" : "");
+  const tick = async () => {
+    if (!scanning || busy) return;
+    if (detector && video.readyState >= 2) {
+      try {
+        const codes = await detector.detect(video);
+        if (codes && codes.length) {
+          const raw = codes[0].rawValue || "";
+          const code = normalizeCode(raw);
+          if (code.length >= 8) {
+            const now = Date.now();
+            if (!(code === lastCode && now - lastCodeAt < 2500)) {
+              lastCode = code; lastCodeAt = now;
+              if (navigator.vibrate) navigator.vibrate(50);
+              checkBarcode(code);
+              return;
+            }
+          }
+        }
+      } catch (_) { /* keep looping */ }
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
 }
 
-function onScan(text) {
-  const code = normalizeCode(text);
-  if (code.length < 8) return;
-  const now = Date.now();
-  // Debounce: library fires dozens of times per second on the same code.
-  if (busy || (code === lastCode && now - lastCodeAt < 2500)) return;
-  lastCode = code; lastCodeAt = now;
-  if (navigator.vibrate) navigator.vibrate(50);
-  checkBarcode(code);
-}
-
-document.getElementById("retrycam").addEventListener("click", () => startScanner());
+document.getElementById("enablecam").addEventListener("click", startCamera);
+document.getElementById("retrycam").addEventListener("click", startCamera);
 
 document.getElementById("barcodefile").addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
@@ -466,25 +487,38 @@ document.getElementById("barcodefile").addEventListener("change", async (e) => {
   if (!file) return;
   const note = document.getElementById("camnote");
   note.textContent = "Reading barcode from photo…";
+  stopCamera();
+  showCamButton(true);
+
+  // Prefer native BarcodeDetector on a bitmap; fall back to html5-qrcode.
   try {
-    await destroyScanner();
-    scanner = new Html5Qrcode("reader", {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-      ],
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-      verbose: false,
-    });
-    const decoded = await scanner.scanFile(file, true);
-    const code = normalizeCode(decoded);
-    if (code.length < 8) throw new Error("No barcode found in that photo");
-    note.textContent = "Found " + code;
-    checkBarcode(code);
+    if ("BarcodeDetector" in window && typeof createImageBitmap === "function") {
+      const bmp = await createImageBitmap(file);
+      const det = new BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"],
+      });
+      const codes = await det.detect(bmp);
+      bmp.close && bmp.close();
+      if (codes && codes.length) {
+        const code = normalizeCode(codes[0].rawValue);
+        if (code.length >= 8) { note.textContent = "Found " + code; checkBarcode(code); return; }
+      }
+    }
+    if (typeof Html5Qrcode !== "undefined") {
+      const tmp = document.createElement("div");
+      tmp.id = "tmp-reader-" + Date.now();
+      tmp.style.display = "none";
+      document.body.appendChild(tmp);
+      const h5 = new Html5Qrcode(tmp.id);
+      const decoded = await h5.scanFile(file, false);
+      try { await h5.clear(); } catch (_) {}
+      tmp.remove();
+      const code = normalizeCode(decoded);
+      if (code.length >= 8) { note.textContent = "Found " + code; checkBarcode(code); return; }
+    }
+    throw new Error("none");
   } catch (err) {
     note.textContent = "Couldn't read a barcode in that photo. Try a sharper close-up, or type the digits.";
-    startScanner();
   }
 });
 
@@ -497,7 +531,7 @@ async function checkBarcode(barcode) {
   }
   if (busy) return;
   busy = true;
-  await destroyScanner();
+  stopCamera();
   setWash(null);
   show("view-loading");
   const ctrl = new AbortController();
@@ -522,7 +556,7 @@ async function checkBarcode(barcode) {
 async function checkName(name, actives) {
   if (busy) return;
   busy = true;
-  await destroyScanner();
+  stopCamera();
   setWash(null);
   show("view-loading");
   const ctrl = new AbortController();
@@ -650,7 +684,7 @@ document.getElementById("againbtn").addEventListener("click", () => {
   goScan();
 });
 
-/* ---- returning users skip the landing ---- */
+/* ---- returning users skip the landing, but still need a tap for camera ---- */
 if (stage) goScan();
 </script>
 </body>
