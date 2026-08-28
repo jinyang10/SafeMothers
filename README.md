@@ -58,7 +58,7 @@ One process serves the API and the static client (`web/`) on port 8000.
 
 ---
 
-## Engineering decisions (the part a hiring manager should read)
+## Engineering decisions 
 
 These are the choices that would transfer to a production safety, search, or applied-ML system.
 
@@ -174,7 +174,3 @@ SafeMothers/
 ## Disclaimer
 
 Informational screening — **not medical advice**. Verdicts are a first-pass screen against public databases and a constrained language model, with deterministic rules on known high-risk ingredients. They are not a diagnosis, an FDA determination, or a substitute for a clinician.
-
----
-
-Built by [Jin Yang](https://github.com/jinyang10).
